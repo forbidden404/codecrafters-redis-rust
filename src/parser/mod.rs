@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use bytes::{Bytes, BytesMut};
 
 /// RedisValueRef is the canonical type for values flowing

@@ -2,13 +2,16 @@ use std::collections::HashMap;
 use std::io::{self, Read, Write};
 use std::str::from_utf8;
 
-use bytes::{Bytes, BytesMut};
+use bytes::BytesMut;
 use mio::event::Event;
 use mio::net::{TcpListener, TcpStream};
 use mio::{Events, Interest, Poll, Registry, Token};
 
+use crate::commands::Command;
 use crate::parser::{RedisReply, RedisValueRef, RespParser};
 
+mod commands;
+mod event_loop;
 mod parser;
 
 const SERVER: Token = Token(0);
@@ -23,6 +26,7 @@ fn main() -> io::Result<()> {
     poll.registry()
         .register(&mut server, SERVER, Interest::READABLE)?;
 
+    let mut cache = HashMap::new();
     let mut connections = HashMap::new();
     let mut commands = HashMap::new();
     let mut unique_token = Token(SERVER.0 + 1);
@@ -57,7 +61,13 @@ fn main() -> io::Result<()> {
                 }
                 token => {
                     let done = if let Some(connection) = connections.get_mut(&token) {
-                        handle_connection_event(poll.registry(), connection, &mut commands, event)?
+                        handle_connection_event(
+                            poll.registry(),
+                            connection,
+                            &mut commands,
+                            &mut cache,
+                            event,
+                        )?
                     } else {
                         false
                     };
@@ -81,6 +91,7 @@ fn handle_connection_event(
     registry: &Registry,
     connection: &mut TcpStream,
     commands: &mut HashMap<Token, Vec<RedisValueRef>>,
+    cache: &mut HashMap<String, String>,
     event: &Event,
 ) -> io::Result<bool> {
     if event.is_readable() {
@@ -132,60 +143,37 @@ fn handle_connection_event(
         && let Some((_, values)) = commands.remove_entry(&event.token())
     {
         for value in values {
-            let data = match value {
-                RedisValueRef::String(bytes) => {
-                    if bytes == Bytes::from_static(b"PING") {
-                        Some(RedisReply::SimpleString("PONG".to_string()).to_reply())
-                    } else {
-                        None
+            if let Ok(command) = Command::try_from(value) {
+                let data = match command {
+                    Command::Ping => RedisReply::SimpleString("PONG".to_string()).to_reply(),
+                    Command::Pong => RedisReply::SimpleString("OK".to_string()).to_reply(),
+                    Command::Cmd(cmd) => {
+                        println!("Received COMMAND {}", cmd);
+                        RedisReply::SimpleString("OK".to_string()).to_reply()
                     }
-                }
-                RedisValueRef::Array(redis_value_refs) if redis_value_refs.len() == 2 => {
-                    let command = redis_value_refs.first().unwrap();
-                    let argument = redis_value_refs.get(1).unwrap();
-                    match (command, argument) {
-                        (RedisValueRef::String(cmd), RedisValueRef::String(arg)) => {
-                            if *cmd == Bytes::from_static(b"ECHO") {
-                                str::from_utf8(arg)
-                                    .map(|v| RedisReply::BulkString(v.to_owned()).to_reply())
-                                    .ok()
-                            } else if *cmd == Bytes::from_static(b"COMMAND") {
-                                str::from_utf8(arg)
-                                    .map(|_v| RedisReply::NullBulkString.to_reply())
-                                    .ok()
-                            } else if *cmd == Bytes::from_static(b"PING") {
-                                Some(RedisReply::SimpleString("PONG".to_string()).to_reply())
-                            } else {
-                                None
-                            }
+                    Command::Echo(echo) => RedisReply::BulkString(echo).to_reply(),
+                    Command::Set(key, value) => {
+                        cache.insert(key, value);
+                        RedisReply::SimpleString("OK".to_string()).to_reply()
+                    }
+                    Command::Get(key) => {
+                        if let Some(entry) = cache.get(&key) {
+                            RedisReply::BulkString(entry.clone()).to_reply()
+                        } else {
+                            RedisReply::NullBulkString.to_reply()
                         }
-                        _ => None,
                     }
-                }
-                RedisValueRef::Array(redis_value_refs) if redis_value_refs.len() == 1 => {
-                    let command = redis_value_refs.first().unwrap();
-                    match command {
-                        RedisValueRef::String(cmd) => {
-                            if *cmd == Bytes::from_static(b"PING") {
-                                Some(RedisReply::SimpleString("PONG".to_string()).to_reply())
-                            } else {
-                                None
-                            }
-                        }
-                        _ => None,
-                    }
-                }
-                _ => None,
-            };
+                };
 
-            if let Some(data) = data {
                 println!("Sending data: {data:?}");
                 match connection.write(data.as_bytes()) {
                     Ok(n) if n < data.len() => return Err(io::ErrorKind::WriteZero.into()),
                     Ok(_) => registry.reregister(connection, event.token(), Interest::READABLE)?,
                     Err(ref err) if would_block(err) => {}
                     Err(ref err) if interrupted(err) => {
-                        return handle_connection_event(registry, connection, commands, event);
+                        return handle_connection_event(
+                            registry, connection, commands, cache, event,
+                        );
                     }
                     Err(err) => return Err(err),
                 }
