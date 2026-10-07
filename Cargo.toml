@@ -10,3 +10,8 @@ bytes = "1.12.1"                                     # helps manage buffers
 chrono = "0.4.45"
 mio = { version = "1.2.3", features = ["os-poll", "net"] }
 thiserror = "2.0.21"                                # error handling
+
+[profile.dev]
+opt-level = 0
+debug = true
+debug-assertions = true

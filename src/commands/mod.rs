@@ -2,8 +2,8 @@ use bytes::Bytes;
 
 use crate::{
     commands::{
-        cmd::CmdCommand, echo::EchoCommand, get::GetCommand, ping::PingCommand, pong::PongCommand,
-        rpush::RPushCommand, set::SetCommand,
+        cmd::CmdCommand, echo::EchoCommand, get::GetCommand, lrange::LRangeCommand,
+        ping::PingCommand, pong::PongCommand, rpush::RPushCommand, set::SetCommand,
     },
     parser::RedisValueRef,
     state::StateStore,
@@ -12,6 +12,7 @@ use crate::{
 mod cmd;
 mod echo;
 mod get;
+mod lrange;
 mod ping;
 mod pong;
 mod rpush;
@@ -113,6 +114,34 @@ fn check(values: Vec<RedisValueRef>) -> Result<Box<dyn Command>, CommandError> {
                 Ok(Box::new(RPushCommand::new(
                     stringify(key.clone())?,
                     RedisValueRef::Array(values),
+                )))
+            }
+            b"LRANGE" if values.len() == 4 => {
+                let RedisValueRef::String(key) = values.get(1).ok_or(CommandError::WrongType)?
+                else {
+                    return Err(CommandError::WrongType);
+                };
+
+                let RedisValueRef::String(start) = values.get(2).ok_or(CommandError::WrongType)?
+                else {
+                    return Err(CommandError::WrongType);
+                };
+                let Ok(start) = stringify(start.clone())?.parse::<i64>() else {
+                    return Err(CommandError::WrongType);
+                };
+
+                let RedisValueRef::String(stop) = values.get(3).ok_or(CommandError::WrongType)?
+                else {
+                    return Err(CommandError::WrongType);
+                };
+                let Ok(stop) = stringify(stop.clone())?.parse::<i64>() else {
+                    return Err(CommandError::WrongType);
+                };
+
+                Ok(Box::new(LRangeCommand::new(
+                    stringify(key.clone())?,
+                    start,
+                    stop,
                 )))
             }
             _ => Err(CommandError::UnknownCommand),
