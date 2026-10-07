@@ -1,29 +1,26 @@
-use std::{collections::HashMap, fmt::Display};
+use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
 use mio::{Token, net::TcpStream};
 
-use crate::commands::Command;
+use crate::{commands::Command, parser::RedisValueRef};
 
-#[derive(Debug)]
 pub struct RedisEntry {
-    pub value: String,
+    pub value: RedisValueRef,
     pub expiry_date: Option<DateTime<Utc>>,
-    pub is_unique: bool,
-}
-
-impl Display for RedisEntry {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.value)
-    }
+    pub last_access_date: Option<DateTime<Utc>>,
 }
 
 impl RedisEntry {
-    pub fn new(value: String, expiry_date: Option<DateTime<Utc>>, is_unique: bool) -> Self {
+    pub fn new(
+        value: RedisValueRef,
+        expiry_date: Option<DateTime<Utc>>,
+        last_access_date: Option<DateTime<Utc>>,
+    ) -> Self {
         RedisEntry {
             value,
             expiry_date,
-            is_unique,
+            last_access_date,
         }
     }
 }

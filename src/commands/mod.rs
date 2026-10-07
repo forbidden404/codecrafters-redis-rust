@@ -3,7 +3,7 @@ use bytes::Bytes;
 use crate::{
     commands::{
         cmd::CmdCommand, echo::EchoCommand, get::GetCommand, ping::PingCommand, pong::PongCommand,
-        set::SetCommand,
+        rpush::RPushCommand, set::SetCommand,
     },
     parser::RedisValueRef,
     state::StateStore,
@@ -14,6 +14,7 @@ mod echo;
 mod get;
 mod ping;
 mod pong;
+mod rpush;
 mod set;
 
 pub trait Command {
@@ -83,13 +84,8 @@ fn check(values: Vec<RedisValueRef>) -> Result<Box<dyn Command>, CommandError> {
                 else {
                     return Err(CommandError::WrongType);
                 };
-                let RedisValueRef::String(value) = values.get(2).ok_or(CommandError::WrongType)?
-                else {
-                    return Err(CommandError::WrongType);
-                };
-
-                let mut set_command =
-                    SetCommand::new(stringify(key.clone())?, stringify(value.clone())?);
+                let value = values.get(2).ok_or(CommandError::WrongType)?;
+                let mut set_command = SetCommand::new(stringify(key.clone())?, value.clone());
 
                 let opt_args = optional_args(values, 3);
                 for (arg_k, arg_v) in opt_args {
@@ -105,6 +101,19 @@ fn check(values: Vec<RedisValueRef>) -> Result<Box<dyn Command>, CommandError> {
                 }
 
                 Ok(Box::new(set_command))
+            }
+            b"RPUSH" if values.len() > 2 => {
+                let RedisValueRef::String(key) = values.get(1).ok_or(CommandError::WrongType)?
+                else {
+                    return Err(CommandError::WrongType);
+                };
+
+                let values = values.clone().into_iter().skip(2).collect();
+
+                Ok(Box::new(RPushCommand::new(
+                    stringify(key.clone())?,
+                    RedisValueRef::Array(values),
+                )))
             }
             _ => Err(CommandError::UnknownCommand),
         },
