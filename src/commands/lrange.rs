@@ -36,13 +36,13 @@ impl Command for LRangeCommand {
         let start = if self.start < 0 {
             (list.len() as i64 + self.start) as usize
         } else {
-            (min(self.start, list.len() as i64)) as usize
+            (min(self.start, list.len() as i64 - 1)) as usize
         };
 
         let stop = if self.stop < 0 {
             (list.len() as i64 + self.stop) as usize
         } else {
-            (min(self.stop, list.len() as i64)) as usize
+            (min(self.stop, list.len() as i64 - 1)) as usize
         };
 
         if start > stop {
