@@ -1,14 +1,38 @@
 use bytes::Bytes;
 
-use crate::parser::RedisValueRef;
+use crate::{
+    commands::{
+        cmd::CmdCommand, echo::EchoCommand, get::GetCommand, ping::PingCommand, pong::PongCommand,
+        set::SetCommand,
+    },
+    parser::RedisValueRef,
+    state::StateStore,
+};
 
-pub enum Command {
-    Ping,
-    Pong,
-    Cmd(String),
-    Echo(String),
-    Set(String, String),
-    Get(String),
+mod cmd;
+mod echo;
+mod get;
+mod ping;
+mod pong;
+mod set;
+
+pub trait Command {
+    fn execute(&self, state: &mut StateStore) -> String;
+}
+
+pub fn try_from(value: RedisValueRef) -> Result<Box<dyn Command>, CommandError> {
+    match value {
+        RedisValueRef::String(bytes) => match &bytes[..] {
+            b"PING" => Ok(Box::new(PingCommand)),
+            b"PONG" => Ok(Box::new(PongCommand)),
+            _ => Err(CommandError::WrongType),
+        },
+        RedisValueRef::Error(_) => Err(CommandError::WrongType),
+        RedisValueRef::Int(_) => Err(CommandError::WrongType),
+        RedisValueRef::Array(redis_value_refs) => check(redis_value_refs),
+        RedisValueRef::NullArray => Err(CommandError::WrongType),
+        RedisValueRef::NullBulkString => Err(CommandError::WrongType),
+    }
 }
 
 #[derive(Debug)]
@@ -18,82 +42,100 @@ pub enum CommandError {
     Utf8ParseFailure,
 }
 
-impl Command {
-    fn stringify(bytes: Bytes) -> Result<String, CommandError> {
-        str::from_utf8(&bytes)
-            .map_err(|_| CommandError::Utf8ParseFailure)
-            .map(|v| v.to_string())
-    }
-    fn check_one(values: Vec<RedisValueRef>) -> Result<Self, CommandError> {
-        let value = values.first().ok_or(CommandError::WrongType)?;
-        match value {
-            RedisValueRef::String(bytes) => match &bytes[..] {
-                b"PING" => Ok(Command::Ping),
-                b"PONG" => Ok(Command::Pong),
-                _ => Err(CommandError::UnknownCommand),
-            },
-            _ => Err(CommandError::WrongType),
-        }
-    }
+fn stringify(bytes: Bytes) -> Result<String, CommandError> {
+    str::from_utf8(&bytes)
+        .map_err(|_| CommandError::Utf8ParseFailure)
+        .map(|v| v.to_string())
+}
 
-    fn check_two(values: Vec<RedisValueRef>) -> Result<Self, CommandError> {
-        let value1 = values.first().ok_or(CommandError::WrongType)?;
-        let value2 = values.get(1).ok_or(CommandError::WrongType)?;
-        match (value1, value2) {
-            (RedisValueRef::String(cmd), RedisValueRef::String(arg)) => match &cmd[..] {
-                b"ECHO" => Ok(Command::Echo(Self::stringify(arg.clone())?)),
-                b"COMMAND" => Ok(Command::Cmd(Self::stringify(arg.clone())?)),
-                b"GET" => Ok(Command::Get(Self::stringify(arg.clone())?)),
-                _ => Err(CommandError::UnknownCommand),
-            },
-            _ => Err(CommandError::WrongType),
-        }
-    }
+fn check(values: Vec<RedisValueRef>) -> Result<Box<dyn Command>, CommandError> {
+    let name = values.first().ok_or(CommandError::WrongType)?;
+    match name {
+        RedisValueRef::String(bytes) => match &bytes[..] {
+            b"PING" => Ok(Box::new(PingCommand {})),
+            b"PONG" => Ok(Box::new(PongCommand {})),
+            b"ECHO" => {
+                let RedisValueRef::String(value) = values.get(1).ok_or(CommandError::WrongType)?
+                else {
+                    return Err(CommandError::WrongType);
+                };
 
-    fn check_three(values: Vec<RedisValueRef>) -> Result<Self, CommandError> {
-        let value1 = values.first().ok_or(CommandError::WrongType)?;
-        let value2 = values.get(1).ok_or(CommandError::WrongType)?;
-        let value3 = values.get(2).ok_or(CommandError::WrongType)?;
-        match (value1, value2, value3) {
-            (
-                RedisValueRef::String(cmd),
-                RedisValueRef::String(arg1),
-                RedisValueRef::String(arg2),
-            ) => match &cmd[..] {
-                b"SET" => Ok(Command::Set(
-                    Self::stringify(arg1.clone())?,
-                    Self::stringify(arg2.clone())?,
-                )),
-                _ => Err(CommandError::UnknownCommand),
-            },
-            _ => Err(CommandError::WrongType),
-        }
+                Ok(Box::new(EchoCommand::new(stringify(value.clone())?)))
+            }
+            b"GET" => {
+                let RedisValueRef::String(value) = values.get(1).ok_or(CommandError::WrongType)?
+                else {
+                    return Err(CommandError::WrongType);
+                };
+
+                Ok(Box::new(GetCommand::new(stringify(value.clone())?)))
+            }
+            b"COMMAND" => {
+                let RedisValueRef::String(value) = values.get(1).ok_or(CommandError::WrongType)?
+                else {
+                    return Err(CommandError::WrongType);
+                };
+
+                Ok(Box::new(CmdCommand::new(stringify(value.clone())?)))
+            }
+            b"SET" => {
+                let RedisValueRef::String(key) = values.get(1).ok_or(CommandError::WrongType)?
+                else {
+                    return Err(CommandError::WrongType);
+                };
+                let RedisValueRef::String(value) = values.get(2).ok_or(CommandError::WrongType)?
+                else {
+                    return Err(CommandError::WrongType);
+                };
+
+                let mut set_command =
+                    SetCommand::new(stringify(key.clone())?, stringify(value.clone())?);
+
+                let opt_args = optional_args(values, 3);
+                for (arg_k, arg_v) in opt_args {
+                    if arg_k == "EX"
+                        && let Ok(duration) = arg_v.parse::<u64>()
+                    {
+                        set_command.set_ex(duration);
+                    } else if arg_k == "PX"
+                        && let Ok(duration) = arg_v.parse::<u64>()
+                    {
+                        set_command.set_px(duration);
+                    }
+                }
+
+                Ok(Box::new(set_command))
+            }
+            _ => Err(CommandError::UnknownCommand),
+        },
+        _ => Err(CommandError::WrongType),
     }
 }
 
-impl TryFrom<RedisValueRef> for Command {
-    type Error = CommandError;
+fn optional_args(list: Vec<RedisValueRef>, starting_index: usize) -> Vec<(String, String)> {
+    if starting_index > list.len() {
+        return vec![];
+    }
 
-    fn try_from(value: RedisValueRef) -> Result<Self, Self::Error> {
-        match value {
-            RedisValueRef::String(bytes) => match &bytes[..] {
-                b"PING" => Ok(Command::Ping),
-                b"PONG" => Ok(Command::Pong),
-                _ => Err(CommandError::WrongType),
-            },
-            RedisValueRef::Error(_) => Err(CommandError::WrongType),
-            RedisValueRef::Int(_) => Err(CommandError::WrongType),
-            RedisValueRef::Array(redis_value_refs) => {
-                let count = redis_value_refs.len();
-                match count {
-                    1 => Self::check_one(redis_value_refs),
-                    2 => Self::check_two(redis_value_refs),
-                    3 => Self::check_three(redis_value_refs),
-                    _ => Err(CommandError::WrongType),
-                }
-            }
-            RedisValueRef::NullArray => Err(CommandError::WrongType),
-            RedisValueRef::NullBulkString => Err(CommandError::WrongType),
+    let mut pairs = Vec::new();
+
+    let mut first = None;
+    for item in list.iter().skip(starting_index) {
+        let RedisValueRef::String(cur) = item else {
+            continue;
+        };
+
+        let Ok(string) = stringify(cur.clone()) else {
+            continue;
+        };
+
+        if let Some(fst) = first {
+            pairs.push((fst, string));
+            first = None;
+        } else {
+            first = Some(string);
         }
     }
+
+    pairs
 }

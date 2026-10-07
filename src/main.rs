@@ -1,18 +1,19 @@
-use std::collections::HashMap;
 use std::io::{self, Read, Write};
 use std::str::from_utf8;
 
 use bytes::BytesMut;
 use mio::event::Event;
-use mio::net::{TcpListener, TcpStream};
+use mio::net::TcpListener;
 use mio::{Events, Interest, Poll, Registry, Token};
 
-use crate::commands::Command;
-use crate::parser::{RedisReply, RedisValueRef, RespParser};
+use crate::commands::try_from;
+use crate::parser::RespParser;
+use crate::state::StateStore;
 
 mod commands;
 mod event_loop;
 mod parser;
+mod state;
 
 const SERVER: Token = Token(0);
 
@@ -26,9 +27,8 @@ fn main() -> io::Result<()> {
     poll.registry()
         .register(&mut server, SERVER, Interest::READABLE)?;
 
-    let mut cache = HashMap::new();
-    let mut connections = HashMap::new();
-    let mut commands = HashMap::new();
+    let mut state = StateStore::new();
+
     let mut unique_token = Token(SERVER.0 + 1);
 
     loop {
@@ -57,22 +57,14 @@ fn main() -> io::Result<()> {
                     poll.registry()
                         .register(&mut connection, token, Interest::READABLE)?;
 
-                    connections.insert(token, connection);
+                    state.register_connection_to_token(connection, token);
                 }
                 token => {
-                    let done = if let Some(connection) = connections.get_mut(&token) {
-                        handle_connection_event(
-                            poll.registry(),
-                            connection,
-                            &mut commands,
-                            &mut cache,
-                            event,
-                        )?
-                    } else {
-                        false
-                    };
+                    let done = handle_connection_event(poll.registry(), &mut state, event)?;
 
-                    if done && let Some(mut connection) = connections.remove(&token) {
+                    if done
+                        && let Some(mut connection) = state.deregister_connection_to_token(&token)
+                    {
                         poll.registry().deregister(&mut connection)?;
                     }
                 }
@@ -89,9 +81,7 @@ fn next(current: &mut Token) -> Token {
 
 fn handle_connection_event(
     registry: &Registry,
-    connection: &mut TcpStream,
-    commands: &mut HashMap<Token, Vec<RedisValueRef>>,
-    cache: &mut HashMap<String, String>,
+    state: &mut StateStore,
     event: &Event,
 ) -> io::Result<bool> {
     if event.is_readable() {
@@ -99,6 +89,10 @@ fn handle_connection_event(
         let mut bytes_read = 0;
 
         loop {
+            let connection = state
+                .connection_for_token(&event.token())
+                .expect("No connection for token");
+
             match connection.read(&mut received_data[bytes_read..]) {
                 Ok(n) => {
                     bytes_read += n;
@@ -117,10 +111,9 @@ fn handle_connection_event(
             let mut parser = RespParser::new();
             match parser.parse(&mut BytesMut::from(received_data)) {
                 Ok(Some(value)) => {
-                    commands
-                        .entry(event.token())
-                        .and_modify(|arr| arr.push(value.clone()))
-                        .or_insert(vec![value]);
+                    if let Ok(command) = try_from(value) {
+                        state.register_command_for_token(command, event.token());
+                    }
                 }
                 Ok(None) => {}
                 Err(err) => {
@@ -132,6 +125,9 @@ fn handle_connection_event(
                 println!("Received data: {}", str_buf.trim_end());
 
                 let interests = Interest::WRITABLE;
+                let connection = state
+                    .connection_for_token(&event.token())
+                    .expect("No connection for token");
                 registry.reregister(connection, event.token(), interests)?;
             } else {
                 println!("Received (none UTF-8) data: {received_data:?}");
@@ -139,44 +135,25 @@ fn handle_connection_event(
         }
     }
 
-    if event.is_writable()
-        && let Some((_, values)) = commands.remove_entry(&event.token())
-    {
-        for value in values {
-            if let Ok(command) = Command::try_from(value) {
-                let data = match command {
-                    Command::Ping => RedisReply::SimpleString("PONG".to_string()).to_reply(),
-                    Command::Pong => RedisReply::SimpleString("OK".to_string()).to_reply(),
-                    Command::Cmd(cmd) => {
-                        println!("Received COMMAND {}", cmd);
-                        RedisReply::SimpleString("OK".to_string()).to_reply()
-                    }
-                    Command::Echo(echo) => RedisReply::BulkString(echo).to_reply(),
-                    Command::Set(key, value) => {
-                        cache.insert(key, value);
-                        RedisReply::SimpleString("OK".to_string()).to_reply()
-                    }
-                    Command::Get(key) => {
-                        if let Some(entry) = cache.get(&key) {
-                            RedisReply::BulkString(entry.clone()).to_reply()
-                        } else {
-                            RedisReply::NullBulkString.to_reply()
-                        }
-                    }
-                };
+    if event.is_writable() {
+        let commands = state.commands_for_token(&event.token());
 
-                println!("Sending data: {data:?}");
-                match connection.write(data.as_bytes()) {
-                    Ok(n) if n < data.len() => return Err(io::ErrorKind::WriteZero.into()),
-                    Ok(_) => registry.reregister(connection, event.token(), Interest::READABLE)?,
-                    Err(ref err) if would_block(err) => {}
-                    Err(ref err) if interrupted(err) => {
-                        return handle_connection_event(
-                            registry, connection, commands, cache, event,
-                        );
-                    }
-                    Err(err) => return Err(err),
+        for command in commands {
+            let data = command.execute(state);
+
+            let connection = state
+                .connection_for_token(&event.token())
+                .expect("No connection for token");
+
+            println!("Sending data: {data:?}");
+            match connection.write(data.as_bytes()) {
+                Ok(n) if n < data.len() => return Err(io::ErrorKind::WriteZero.into()),
+                Ok(_) => registry.reregister(connection, event.token(), Interest::READABLE)?,
+                Err(ref err) if would_block(err) => {}
+                Err(ref err) if interrupted(err) => {
+                    return handle_connection_event(registry, state, event);
                 }
+                Err(err) => return Err(err),
             }
         }
     }

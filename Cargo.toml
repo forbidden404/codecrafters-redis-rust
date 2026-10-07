@@ -7,5 +7,6 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.104"                                   # error handling
 bytes = "1.12.1"                                     # helps manage buffers
+chrono = "0.4.45"
 mio = { version = "1.2.3", features = ["os-poll", "net"] }
 thiserror = "2.0.21"                                # error handling

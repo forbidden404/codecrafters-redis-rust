@@ -4,7 +4,7 @@ use bytes::{Bytes, BytesMut};
 /// RedisValueRef is the canonical type for values flowing
 /// through the system. Inputs are converted into RedisValues,
 /// and outputs are converted into RedisValues.
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Debug)]
 pub enum RedisValueRef {
     String(Bytes),
     Error(Bytes),
