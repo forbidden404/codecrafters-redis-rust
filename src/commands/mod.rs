@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use crate::{
     clock::SystemClock,
     commands::{
@@ -5,9 +7,11 @@ use crate::{
         echo::EchoCommand,
         get::GetCommand,
         llen::LLenCommand,
+        lpop::LPopCommand,
         lpush::LPushCommand,
         lrange::LRangeCommand,
         ping::PingCommand,
+        rpop::RPopCommand,
         rpush::RPushCommand,
         set::{ExpiryCondition, SetCommand, SetCondition},
         utils::stringify,
@@ -20,9 +24,11 @@ mod cmd;
 mod echo;
 mod get;
 mod llen;
+mod lpop;
 mod lpush;
 mod lrange;
 mod ping;
+mod rpop;
 mod rpush;
 mod set;
 mod utils;
@@ -53,7 +59,10 @@ pub enum CommandError {
     Abort,
 }
 
-fn get_string_at_index(values: &[RedisValueRef], index: usize) -> Result<String, CommandError> {
+fn get_string_at_index(
+    values: &VecDeque<RedisValueRef>,
+    index: usize,
+) -> Result<String, CommandError> {
     let RedisValueRef::String(value) = values.get(index).ok_or(CommandError::WrongType)? else {
         return Err(CommandError::WrongType);
     };
@@ -61,8 +70,8 @@ fn get_string_at_index(values: &[RedisValueRef], index: usize) -> Result<String,
     stringify(value.clone())
 }
 
-fn check(values: Vec<RedisValueRef>) -> Result<Box<dyn Command>, CommandError> {
-    let name = values.first().ok_or(CommandError::WrongType)?;
+fn check(values: VecDeque<RedisValueRef>) -> Result<Box<dyn Command>, CommandError> {
+    let name = values.front().ok_or(CommandError::WrongType)?;
     match name {
         RedisValueRef::String(bytes) => match &bytes[..] {
             b"PING" => {
@@ -80,6 +89,20 @@ fn check(values: Vec<RedisValueRef>) -> Result<Box<dyn Command>, CommandError> {
             b"LLEN" => {
                 let key = get_string_at_index(&values, 1)?;
                 Ok(Box::new(LLenCommand::new(key)))
+            }
+            b"LPOP" => {
+                let key = get_string_at_index(&values, 1)?;
+                let quantity = get_string_at_index(&values, 2)
+                    .ok()
+                    .and_then(|v| v.parse::<usize>().ok());
+                Ok(Box::new(LPopCommand::new(key, quantity)))
+            }
+            b"RPOP" => {
+                let key = get_string_at_index(&values, 1)?;
+                let quantity = get_string_at_index(&values, 2)
+                    .ok()
+                    .and_then(|v| v.parse::<usize>().ok());
+                Ok(Box::new(RPopCommand::new(key, quantity)))
             }
             b"COMMAND" => {
                 let value = get_string_at_index(&values, 1)?;
@@ -140,7 +163,7 @@ fn check(values: Vec<RedisValueRef>) -> Result<Box<dyn Command>, CommandError> {
 }
 
 fn parse_extended_string_arguments(
-    list: Vec<RedisValueRef>,
+    list: VecDeque<RedisValueRef>,
     start_pos: usize,
 ) -> (Option<ExpiryCondition>, Option<SetCondition>, bool) {
     if start_pos > list.len() {

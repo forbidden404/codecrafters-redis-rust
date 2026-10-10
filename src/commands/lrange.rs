@@ -50,14 +50,18 @@ impl Command for LRangeCommand {
         let start = start.clamp(0, (list.len() as i64) - 1) as usize;
         let stop = stop.clamp(0, (list.len() as i64) - 1) as usize;
 
-        Ok(redis_value_arr_to_reply(list[start..=stop].to_vec())
-            .unwrap_or(RedisReply::Array(vec![]))
-            .to_reply())
+        Ok(
+            redis_value_arr_to_reply(list.iter().skip(start).take(stop - start + 1).cloned())
+                .unwrap_or(RedisReply::Array(vec![]))
+                .to_reply(),
+        )
     }
 }
 
 #[cfg(test)]
 mod lrange_command_tests {
+    use std::collections::VecDeque;
+
     use super::*;
 
     use crate::{commands::rpush::RPushCommand, state::StateStore};
@@ -68,7 +72,7 @@ mod lrange_command_tests {
         let mut state = StateStore::new();
         let _ = RPushCommand::new(
             "mylist".to_string(),
-            RedisValueRef::Array(vec![
+            RedisValueRef::Array(VecDeque::from([
                 RedisValueRef::Int(0),
                 RedisValueRef::Int(1),
                 RedisValueRef::Int(2),
@@ -79,7 +83,7 @@ mod lrange_command_tests {
                 RedisValueRef::Int(7),
                 RedisValueRef::Int(8),
                 RedisValueRef::Int(9),
-            ]),
+            ])),
         )
         .execute(&mut state)
         .expect("Failed to rpush list");
@@ -137,7 +141,7 @@ mod lrange_command_tests {
         let mut state = StateStore::new();
         let _ = RPushCommand::new(
             "mylist".to_string(),
-            RedisValueRef::Array(vec![
+            RedisValueRef::Array(VecDeque::from([
                 RedisValueRef::Int(0),
                 RedisValueRef::Int(1),
                 RedisValueRef::Int(2),
@@ -148,7 +152,7 @@ mod lrange_command_tests {
                 RedisValueRef::Int(7),
                 RedisValueRef::Int(8),
                 RedisValueRef::Int(9),
-            ]),
+            ])),
         )
         .execute(&mut state)
         .expect("Failed to rpush list");
@@ -168,12 +172,12 @@ mod lrange_command_tests {
         let mut state = StateStore::new();
         let _ = RPushCommand::new(
             "mylist".to_string(),
-            RedisValueRef::Array(vec![
+            RedisValueRef::Array(VecDeque::from([
                 RedisValueRef::Int(0),
                 RedisValueRef::Int(1),
                 RedisValueRef::Int(2),
                 RedisValueRef::Int(3),
-            ]),
+            ])),
         )
         .execute(&mut state)
         .expect("Failed to rpush list");
@@ -203,12 +207,12 @@ mod lrange_command_tests {
         let mut state = StateStore::new();
         let _ = RPushCommand::new(
             "mylist".to_string(),
-            RedisValueRef::Array(vec![
+            RedisValueRef::Array(VecDeque::from([
                 RedisValueRef::Int(0),
                 RedisValueRef::Int(1),
                 RedisValueRef::Int(2),
                 RedisValueRef::Int(3),
-            ]),
+            ])),
         )
         .execute(&mut state)
         .expect("Failed to rpush list");

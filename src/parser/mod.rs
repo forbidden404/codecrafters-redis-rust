@@ -1,4 +1,6 @@
 #![allow(dead_code)]
+use std::collections::VecDeque;
+
 use bytes::{Bytes, BytesMut};
 
 /// RedisValueRef is the canonical type for values flowing
@@ -9,7 +11,7 @@ pub enum RedisValueRef {
     String(Bytes),
     Error(Bytes),
     Int(i64),
-    Array(Vec<RedisValueRef>),
+    Array(VecDeque<RedisValueRef>),
     NullArray,
     NullBulkString,
 }

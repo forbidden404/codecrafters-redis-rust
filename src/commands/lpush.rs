@@ -32,12 +32,12 @@ impl Command for LPushCommand {
                     if let RedisValueRef::Array(existing) = entry.value.clone()
                         && let RedisValueRef::Array(mut new_values) = self.value.clone()
                     {
-                        new_values.reverse();
-                        new_values.extend_from_slice(&existing);
+                        new_values.make_contiguous().reverse();
+                        new_values.extend(existing.iter().cloned());
                         count = new_values.len() as i64;
                         state.cache.insert(
                             self.key.clone(),
-                            RedisEntry::new(RedisValueRef::Array(new_values.to_vec()), None, None),
+                            RedisEntry::new(RedisValueRef::Array(new_values), None, None),
                         );
                         true
                     } else {
@@ -47,11 +47,11 @@ impl Command for LPushCommand {
             }
             _ => {
                 if let RedisValueRef::Array(mut values) = self.value.clone() {
-                    values.reverse();
+                    values.make_contiguous().reverse();
                     count = values.len() as i64;
                     state.cache.insert(
                         self.key.clone(),
-                        RedisEntry::new(RedisValueRef::Array(values.to_vec()), None, None),
+                        RedisEntry::new(RedisValueRef::Array(values), None, None),
                     );
                     true
                 } else {
@@ -70,6 +70,8 @@ impl Command for LPushCommand {
 
 #[cfg(test)]
 mod rpush_command_tests {
+    use std::collections::VecDeque;
+
     use super::*;
 
     use crate::commands::{LRangeCommand, utils::redis_value_arr_to_reply};
@@ -81,11 +83,11 @@ mod rpush_command_tests {
         let mut state = StateStore::new();
         let _ = LPushCommand::new(
             "mylist".to_string(),
-            RedisValueRef::Array(vec![
+            RedisValueRef::Array(VecDeque::from([
                 RedisValueRef::Int(0),
                 RedisValueRef::Int(1),
                 RedisValueRef::Int(2),
-            ]),
+            ])),
         )
         .execute(&mut state)
         .expect("Failed to rpush list");

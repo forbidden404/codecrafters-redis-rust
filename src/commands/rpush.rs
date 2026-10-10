@@ -32,11 +32,11 @@ impl Command for RPushCommand {
                     if let RedisValueRef::Array(mut existing) = entry.value.clone()
                         && let RedisValueRef::Array(new_values) = &self.value
                     {
-                        existing.extend_from_slice(new_values);
+                        existing.extend(new_values.iter().cloned());
                         count = existing.len() as i64;
                         state.cache.insert(
                             self.key.clone(),
-                            RedisEntry::new(RedisValueRef::Array(existing.to_vec()), None, None),
+                            RedisEntry::new(RedisValueRef::Array(existing), None, None),
                         );
                         true
                     } else {
