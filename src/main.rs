@@ -122,7 +122,7 @@ fn handle_connection_event(
                 }
             }
 
-            if let Ok(str_buf) = from_utf8(received_data) {
+            if from_utf8(received_data).is_ok() {
                 let interests = Interest::WRITABLE;
                 let connection = state
                     .connection_for_token(&event.token())
