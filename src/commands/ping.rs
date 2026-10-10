@@ -18,7 +18,7 @@ impl Command for PingCommand {
         if let Some(message) = &self.message {
             Ok(RedisReply::BulkString(message.clone()).to_reply())
         } else {
-            Ok(RedisReply::BulkString("PONG".to_string()).to_reply())
+            Ok(RedisReply::SimpleString("PONG".to_string()).to_reply())
         }
     }
 }
@@ -41,7 +41,7 @@ mod ping_command_tests {
         // Assert
         assert_eq!(
             reply,
-            Ok(RedisReply::BulkString("PONG".to_string()).to_reply())
+            Ok(RedisReply::SimpleString("PONG".to_string()).to_reply())
         );
     }
 
