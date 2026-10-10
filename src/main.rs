@@ -10,6 +10,7 @@ use crate::commands::try_from;
 use crate::parser::RespParser;
 use crate::state::StateStore;
 
+mod clock;
 mod commands;
 mod event_loop;
 mod parser;
@@ -139,21 +140,21 @@ fn handle_connection_event(
         let commands = state.commands_for_token(&event.token());
 
         for command in commands {
-            let data = command.execute(state);
+            if let Ok(data) = command.execute(state) {
+                let connection = state
+                    .connection_for_token(&event.token())
+                    .expect("No connection for token");
 
-            let connection = state
-                .connection_for_token(&event.token())
-                .expect("No connection for token");
-
-            println!("Sending data: {data:?}");
-            match connection.write(data.as_bytes()) {
-                Ok(n) if n < data.len() => return Err(io::ErrorKind::WriteZero.into()),
-                Ok(_) => registry.reregister(connection, event.token(), Interest::READABLE)?,
-                Err(ref err) if would_block(err) => {}
-                Err(ref err) if interrupted(err) => {
-                    return handle_connection_event(registry, state, event);
+                println!("Sending data: {data:?}");
+                match connection.write(data.as_bytes()) {
+                    Ok(n) if n < data.len() => return Err(io::ErrorKind::WriteZero.into()),
+                    Ok(_) => registry.reregister(connection, event.token(), Interest::READABLE)?,
+                    Err(ref err) if would_block(err) => {}
+                    Err(ref err) if interrupted(err) => {
+                        return handle_connection_event(registry, state, event);
+                    }
+                    Err(err) => return Err(err),
                 }
-                Err(err) => return Err(err),
             }
         }
     }

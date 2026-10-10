@@ -1,7 +1,7 @@
 use chrono::Utc;
 
 use crate::{
-    commands::Command,
+    commands::{Command, CommandError},
     parser::{RedisReply, RedisValueRef},
     state::RedisEntry,
 };
@@ -19,7 +19,7 @@ impl RPushCommand {
 }
 
 impl Command for RPushCommand {
-    fn execute(&self, state: &mut crate::state::StateStore) -> String {
+    fn execute(&self, state: &mut crate::state::StateStore) -> Result<String, CommandError> {
         let mut count: i64 = 0;
         let status = match state.cache.get(&self.key) {
             Some(entry) => {
@@ -59,9 +59,9 @@ impl Command for RPushCommand {
         };
 
         if status {
-            RedisReply::Int(count).to_reply()
+            Ok(RedisReply::Int(count).to_reply())
         } else {
-            RedisReply::NullBulkString.to_reply()
+            Ok(RedisReply::NullBulkString.to_reply())
         }
     }
 }

@@ -1,4 +1,7 @@
-use crate::{commands::Command, parser::RedisReply};
+use crate::{
+    commands::{Command, CommandError},
+    parser::RedisReply,
+};
 
 pub struct CmdCommand;
 
@@ -9,7 +12,7 @@ impl CmdCommand {
 }
 
 impl Command for CmdCommand {
-    fn execute(&self, _state: &mut crate::state::StateStore) -> String {
-        RedisReply::SimpleString("OK".to_string()).to_reply()
+    fn execute(&self, _state: &mut crate::state::StateStore) -> Result<String, CommandError> {
+        Ok(RedisReply::SimpleString("OK".to_string()).to_reply())
     }
 }

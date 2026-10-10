@@ -1,0 +1,26 @@
+key
+value
+flags
+expire: Option<i64>
+unit: S or MS
+match_value: IFNE, IFDEQ, IFEQ, IFDNE
+
+relative_ttl = EX/PX are relative, EXAT/PXAT are absolute.
+
+check if expire value is set, and if it is, if it's valid. If not valid, abort.
+check if get flag is set, if it is, check if get command does not return an error. If it does, abort. *verify get command behaviour
+
+check if (NX is set and key exists), or (XX, IFEQ, or IFDEQ, and the key does not exist). In case that is true, return, and add an abort reply, or none in cause get already added a value.
+
+handle conditional set operations - only set if key is found and condition is met, otherwise return nil.
+if value is not a string, return.
+
+if flag has IFEQ or IFNE, then check if match_value matches (IFEQ) or does not match (IFNE). If the check fails, return while sending an abort reply or the get reply from the earlier command.
+
+if flag has IFDEQ or IFDNE, then check if match_value hex digest matches (IFDEQ) or does not match (IFDEQ) the value digest. If the check fails, return while sending an abort reply or the get reply from the earlier command.
+
+if the expire time is already elapsed, we don't need to add the key.
+
+if expire is not null, or keep_ttl is set, we don't delete the entry's expiry date.
+if entry already existed, update the last_access_date
+
