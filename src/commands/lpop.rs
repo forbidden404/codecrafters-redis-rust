@@ -26,8 +26,7 @@ impl Command for LPopCommand {
             Entry::Occupied(mut entry) => match &mut entry.get_mut().value {
                 RedisValueRef::Array(list) => {
                     if let Some(quantity) = self.quantity {
-                        let len = list.len().saturating_sub(quantity);
-                        let front: VecDeque<RedisValueRef> = list.drain(..len).collect();
+                        let front: VecDeque<RedisValueRef> = list.drain(..quantity).collect();
                         Ok(redis_value_arr_to_reply(front)?.to_reply())
                     } else {
                         if let Some(el) = list.pop_front() {
@@ -91,6 +90,8 @@ mod lpop_command_tests {
                 RedisValueRef::String(Bytes::from_static(b"b")),
                 RedisValueRef::String(Bytes::from_static(b"c")),
                 RedisValueRef::String(Bytes::from_static(b"d")),
+                RedisValueRef::String(Bytes::from_static(b"e")),
+                RedisValueRef::String(Bytes::from_static(b"f")),
             ])),
         )
         .execute(&mut state)
@@ -102,7 +103,7 @@ mod lpop_command_tests {
             .expect("Failed to lpop");
 
         // Assert
-        assert_eq!(count, RedisReply::Int(4).to_reply());
+        assert_eq!(count, RedisReply::Int(6).to_reply());
         assert_eq!(
             value,
             RedisReply::Array(vec![

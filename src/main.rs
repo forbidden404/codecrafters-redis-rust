@@ -123,8 +123,6 @@ fn handle_connection_event(
             }
 
             if let Ok(str_buf) = from_utf8(received_data) {
-                println!("Received data: {}", str_buf.trim_end());
-
                 let interests = Interest::WRITABLE;
                 let connection = state
                     .connection_for_token(&event.token())
@@ -145,7 +143,6 @@ fn handle_connection_event(
                     .connection_for_token(&event.token())
                     .expect("No connection for token");
 
-                println!("Sending data: {data:?}");
                 match connection.write(data.as_bytes()) {
                     Ok(n) if n < data.len() => return Err(io::ErrorKind::WriteZero.into()),
                     Ok(_) => registry.reregister(connection, event.token(), Interest::READABLE)?,
