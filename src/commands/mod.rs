@@ -1,15 +1,16 @@
-use bytes::Bytes;
-
 use crate::{
     clock::SystemClock,
     commands::{
         cmd::CmdCommand,
         echo::EchoCommand,
         get::GetCommand,
+        llen::LLenCommand,
+        lpush::LPushCommand,
         lrange::LRangeCommand,
         ping::PingCommand,
         rpush::RPushCommand,
         set::{ExpiryCondition, SetCommand, SetCondition},
+        utils::stringify,
     },
     parser::RedisValueRef,
     state::StateStore,
@@ -18,10 +19,13 @@ use crate::{
 mod cmd;
 mod echo;
 mod get;
+mod llen;
+mod lpush;
 mod lrange;
 mod ping;
 mod rpush;
 mod set;
+mod utils;
 
 pub trait Command {
     fn execute(&self, state: &mut StateStore) -> Result<String, CommandError>;
@@ -49,12 +53,6 @@ pub enum CommandError {
     Abort,
 }
 
-fn stringify(bytes: Bytes) -> Result<String, CommandError> {
-    str::from_utf8(&bytes)
-        .map_err(|_| CommandError::Utf8ParseFailure)
-        .map(|v| v.to_string())
-}
-
 fn get_string_at_index(values: &[RedisValueRef], index: usize) -> Result<String, CommandError> {
     let RedisValueRef::String(value) = values.get(index).ok_or(CommandError::WrongType)? else {
         return Err(CommandError::WrongType);
@@ -79,6 +77,10 @@ fn check(values: Vec<RedisValueRef>) -> Result<Box<dyn Command>, CommandError> {
                 let key = get_string_at_index(&values, 1)?;
                 Ok(Box::new(GetCommand::new(key, SystemClock)))
             }
+            b"LLEN" => {
+                let key = get_string_at_index(&values, 1)?;
+                Ok(Box::new(LLenCommand::new(key)))
+            }
             b"COMMAND" => {
                 let value = get_string_at_index(&values, 1)?;
                 Ok(Box::new(CmdCommand::new(value)))
@@ -102,6 +104,16 @@ fn check(values: Vec<RedisValueRef>) -> Result<Box<dyn Command>, CommandError> {
                 let values = values.clone().into_iter().skip(2).collect();
 
                 Ok(Box::new(RPushCommand::new(
+                    key,
+                    RedisValueRef::Array(values),
+                )))
+            }
+            b"LPUSH" if values.len() > 2 => {
+                let key = get_string_at_index(&values, 1)?;
+
+                let values = values.clone().into_iter().skip(2).collect();
+
+                Ok(Box::new(LPushCommand::new(
                     key,
                     RedisValueRef::Array(values),
                 )))
