@@ -3,7 +3,7 @@ use chrono::Utc;
 use crate::{
     commands::{Command, CommandError},
     parser::{RedisReply, RedisValueRef},
-    state::RedisEntry,
+    server::state::{RedisEntry, StateStore},
 };
 
 #[derive(Debug)]
@@ -19,7 +19,7 @@ impl RPushCommand {
 }
 
 impl Command for RPushCommand {
-    fn execute(&self, state: &mut crate::state::StateStore) -> Result<String, CommandError> {
+    fn execute(&self, state: &mut StateStore) -> Result<String, CommandError> {
         let mut count: i64 = 0;
         let status = match state.cache.get(&self.key) {
             Some(entry) => {

@@ -1,6 +1,7 @@
 use crate::{
     commands::{Command, CommandError},
     parser::RedisReply,
+    server::state::StateStore,
 };
 
 pub struct PingCommand {
@@ -14,7 +15,7 @@ impl PingCommand {
 }
 
 impl Command for PingCommand {
-    fn execute(&self, _state: &mut crate::state::StateStore) -> Result<String, CommandError> {
+    fn execute(&self, _state: &mut StateStore) -> Result<String, CommandError> {
         if let Some(message) = &self.message {
             Ok(RedisReply::BulkString(message.clone()).to_reply())
         } else {
@@ -25,8 +26,6 @@ impl Command for PingCommand {
 
 #[cfg(test)]
 mod ping_command_tests {
-    use crate::state::StateStore;
-
     use super::*;
 
     #[test]

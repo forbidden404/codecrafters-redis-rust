@@ -3,6 +3,7 @@ use std::cmp::min;
 use crate::{
     commands::{Command, CommandError, utils::redis_value_arr_to_reply},
     parser::{RedisReply, RedisValueRef},
+    server::state::StateStore,
 };
 
 #[derive(Debug)]
@@ -19,7 +20,7 @@ impl LRangeCommand {
 }
 
 impl Command for LRangeCommand {
-    fn execute(&self, state: &mut crate::state::StateStore) -> Result<String, CommandError> {
+    fn execute(&self, state: &mut StateStore) -> Result<String, CommandError> {
         let Some(entry) = state.cache.get(&self.key) else {
             return Ok(RedisReply::Array(vec![]).to_reply());
         };
@@ -64,7 +65,7 @@ mod lrange_command_tests {
 
     use super::*;
 
-    use crate::{commands::rpush::RPushCommand, state::StateStore};
+    use crate::commands::rpush::RPushCommand;
 
     #[test]
     fn test_lrange_basics() {

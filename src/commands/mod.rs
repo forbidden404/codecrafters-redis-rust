@@ -1,7 +1,6 @@
 use std::collections::VecDeque;
 
 use crate::{
-    clock::SystemClock,
     commands::{
         cmd::CmdCommand,
         echo::EchoCommand,
@@ -17,7 +16,8 @@ use crate::{
         utils::stringify,
     },
     parser::RedisValueRef,
-    state::StateStore,
+    server::state::StateStore,
+    utils::clock::SystemClock,
 };
 
 mod cmd;

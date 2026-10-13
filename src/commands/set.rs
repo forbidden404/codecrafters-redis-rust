@@ -3,10 +3,10 @@ use std::time::Duration;
 use xxhash_rust::xxh3::xxh3_64;
 
 use crate::{
-    clock::Clock,
     commands::{Command, CommandError, get::GetCommand},
     parser::{RedisReply, RedisValueRef},
-    state::{RedisEntry, StateStore},
+    server::state::{RedisEntry, StateStore},
+    utils::clock::Clock,
 };
 
 #[derive(Debug)]
@@ -226,7 +226,6 @@ mod set_command_tests {
     use chrono::{DateTime, Duration, Utc};
 
     use crate::commands::GetCommand;
-    use crate::state::StateStore;
 
     use super::*;
 

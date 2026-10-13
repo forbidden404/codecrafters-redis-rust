@@ -1,6 +1,7 @@
 use crate::{
     commands::{Command, CommandError},
     parser::RedisReply,
+    server::state::StateStore,
 };
 
 pub struct EchoCommand {
@@ -14,7 +15,7 @@ impl EchoCommand {
 }
 
 impl Command for EchoCommand {
-    fn execute(&self, _state: &mut crate::state::StateStore) -> Result<String, CommandError> {
+    fn execute(&self, _state: &mut StateStore) -> Result<String, CommandError> {
         Ok(RedisReply::BulkString(self.value.to_string()).to_reply())
     }
 }
@@ -22,7 +23,6 @@ impl Command for EchoCommand {
 #[cfg(test)]
 mod echo_command_tests {
     use super::*;
-    use crate::state::StateStore;
 
     #[test]
     fn test_echo_sends_message() {

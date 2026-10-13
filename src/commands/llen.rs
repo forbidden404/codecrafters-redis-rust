@@ -1,4 +1,5 @@
 use crate::commands::CommandError;
+use crate::server::state::StateStore;
 use crate::{
     commands::Command,
     parser::{RedisReply, RedisValueRef},
@@ -15,7 +16,7 @@ impl LLenCommand {
 }
 
 impl Command for LLenCommand {
-    fn execute(&self, state: &mut crate::state::StateStore) -> Result<String, CommandError> {
+    fn execute(&self, state: &mut StateStore) -> Result<String, CommandError> {
         let Some(entry) = state.cache.get(&self.key) else {
             return Ok(RedisReply::Int(0).to_reply());
         };

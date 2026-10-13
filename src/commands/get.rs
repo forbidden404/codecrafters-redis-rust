@@ -1,6 +1,6 @@
-use crate::clock::Clock;
-
 use crate::commands::CommandError;
+use crate::server::state::StateStore;
+use crate::utils::clock::Clock;
 use crate::{
     commands::Command,
     parser::{RedisReply, RedisValueRef},
@@ -18,7 +18,7 @@ impl<C: Clock> GetCommand<C> {
 }
 
 impl<C: Clock> Command for GetCommand<C> {
-    fn execute(&self, state: &mut crate::state::StateStore) -> Result<String, CommandError> {
+    fn execute(&self, state: &mut StateStore) -> Result<String, CommandError> {
         let entry = state.cache.get_mut(&self.key);
 
         let Some(entry) = entry else {
@@ -52,7 +52,6 @@ mod get_command_tests {
     use crate::commands::SetCommand;
     use crate::commands::rpush::RPushCommand;
     use crate::commands::set::ExpiryCondition;
-    use crate::state::StateStore;
 
     use super::*;
 

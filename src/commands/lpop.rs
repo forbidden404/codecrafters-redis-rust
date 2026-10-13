@@ -3,6 +3,7 @@ use std::collections::hash_map::Entry;
 
 use crate::commands::CommandError;
 use crate::commands::utils::redis_value_arr_to_reply;
+use crate::server::state::StateStore;
 use crate::{
     commands::Command,
     parser::{RedisReply, RedisValueRef},
@@ -20,7 +21,7 @@ impl LPopCommand {
 }
 
 impl Command for LPopCommand {
-    fn execute(&self, state: &mut crate::state::StateStore) -> Result<String, CommandError> {
+    fn execute(&self, state: &mut StateStore) -> Result<String, CommandError> {
         let entry = state.cache.entry(self.key.clone());
         match entry {
             Entry::Occupied(mut entry) => match &mut entry.get_mut().value {
@@ -49,7 +50,7 @@ mod lpop_command_tests {
 
     use super::*;
 
-    use crate::{commands::rpush::RPushCommand, state::StateStore};
+    use crate::commands::rpush::RPushCommand;
 
     #[test]
     fn test_lpop_returns_value_when_list_is_populated() {
